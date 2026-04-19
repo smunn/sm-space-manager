@@ -30,10 +30,18 @@ struct SpaceNamer {
     }
 
     private func detectProjectName(from windows: [SpaceWindow]) -> String? {
+        // Priority: IDE projects > terminal CWD > Chrome context
         for window in windows {
             if let name = parseXcodeProject(window) { return name }
+        }
+        for window in windows {
             if let name = parseCursorOrVSCode(window) { return name }
-            if let name = parseTerminal(window) { return name }
+        }
+        for window in windows {
+            if let name = parseTerminalCWD(window) { return name }
+        }
+        for window in windows {
+            if let name = parseChromeContext(window) { return name }
         }
         return nil
     }
@@ -43,8 +51,7 @@ struct SpaceNamer {
         let title = window.windowTitle
         if title.isEmpty { return nil }
 
-        // Xcode titles: "ProjectName — FileName.swift" or "ProjectName"
-        if let dashRange = title.range(of: " — ") ?? title.range(of: " - ") {
+        if let dashRange = title.range(of: " \u{2014} ") ?? title.range(of: " - ") {
             let project = String(title[title.startIndex..<dashRange.lowerBound])
             if !project.isEmpty { return project }
         }
@@ -62,11 +69,10 @@ struct SpaceNamer {
         let title = window.windowTitle
         if title.isEmpty { return nil }
 
-        // Cursor/VS Code titles: "filename — ProjectFolder" or "ProjectFolder"
-        if let dashRange = title.range(of: " — ") ?? title.range(of: " - ") {
+        if let dashRange = title.range(of: " \u{2014} ") ?? title.range(of: " - ") {
             let afterDash = String(title[dashRange.upperBound...])
             let folderName = afterDash
-                .replacingOccurrences(of: " [SSH", with: "")
+                .replacingOccurrences(of: " [SSH:", with: "")
                 .replacingOccurrences(of: " (Workspace)", with: "")
                 .trimmingCharacters(in: .whitespaces)
             if !folderName.isEmpty && !folderName.contains("/") {
@@ -77,14 +83,19 @@ struct SpaceNamer {
         return nil
     }
 
-    private func parseTerminal(_ window: SpaceWindow) -> String? {
-        let terminals = ["Terminal", "iTerm2", "Alacritty", "kitty", "Warp", "Ghostty"]
+    private func parseTerminalCWD(_ window: SpaceWindow) -> String? {
+        let terminals: Set<String> = ["Terminal", "iTerm2", "Alacritty", "kitty", "Warp", "Ghostty"]
         guard terminals.contains(window.ownerName) else { return nil }
 
+        // Read from pre-resolved cache (never blocks)
+        if let name = ProcessHelper.shared.cachedProjectName(terminalPID: window.ownerPID) {
+            return name
+        }
+
+        // Fallback: parse the window title (requires Screen Recording permission)
         let title = window.windowTitle
         if title.isEmpty { return nil }
 
-        // Terminal titles often show "user@host: ~/path/to/project" or just the directory
         if let colonRange = title.range(of: ": ") {
             let path = String(title[colonRange.upperBound...])
             return lastPathComponent(path)
@@ -95,6 +106,40 @@ struct SpaceNamer {
         }
 
         return nil
+    }
+
+    private func parseChromeContext(_ window: SpaceWindow) -> String? {
+        guard window.ownerName == "Google Chrome" else { return nil }
+        let title = window.windowTitle
+        if title.isEmpty { return nil }
+
+        // Chrome multi-profile: "Page Title - ProfileName - Google Chrome"
+        // Chrome single profile: "Page Title - Google Chrome"
+        let parts = title.components(separatedBy: " - ")
+        guard parts.count >= 2 else { return nil }
+
+        if parts.count >= 3 {
+            let profileName = parts[parts.count - 2].trimmingCharacters(in: .whitespaces)
+            let pageTitle = parts[0].trimmingCharacters(in: .whitespaces)
+            if !profileName.isEmpty && profileName != "Google Chrome" {
+                return profileName
+            }
+            if !pageTitle.isEmpty {
+                return truncatePageTitle(pageTitle)
+            }
+        }
+
+        let pageTitle = parts[0].trimmingCharacters(in: .whitespaces)
+        if !pageTitle.isEmpty {
+            return truncatePageTitle(pageTitle)
+        }
+
+        return nil
+    }
+
+    private func truncatePageTitle(_ title: String) -> String {
+        if title.count <= 30 { return title }
+        return String(title.prefix(27)) + "..."
     }
 
     private func lastPathComponent(_ path: String) -> String? {

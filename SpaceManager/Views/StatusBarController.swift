@@ -2,8 +2,6 @@
 //  StatusBarController.swift
 //  SpaceManager
 //
-//  Menu bar dropdown showing all spaces with their detected contents.
-//
 
 import Cocoa
 import SwiftUI
@@ -39,16 +37,46 @@ class StatusBarController: NSObject {
     private func updateMenuBarTitle(_ spaces: [Space]) {
         guard let current = spaces.first(where: { $0.isCurrentSpace }) else { return }
         if let button = statusItem.button {
-            let title = truncate(current.spaceName, maxLength: 20)
-            button.title = " \(title)"
+            let number = current.isFullScreen ? "F" : current.spaceByDesktopID
+            button.title = " \(number)"
             button.imagePosition = .imageLeading
         }
     }
 
+    // MARK: - Permission Checks
+
+    private func checkAccessibility() -> Bool {
+        AXIsProcessTrusted()
+    }
+
+    private func checkAutomation() -> Bool {
+        let script = "tell application \"System Events\" to return name of first process"
+        guard let scriptObject = NSAppleScript(source: script) else { return false }
+        var error: NSDictionary?
+        scriptObject.executeAndReturnError(&error)
+        return error == nil
+    }
+
+    private func checkScreenRecording() -> Bool {
+        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+            return false
+        }
+        for w in windowList {
+            let owner = w[kCGWindowOwnerName as String] as? String ?? ""
+            if owner == "Finder" || owner == "Google Chrome" || owner == "Terminal" || owner == "Safari" {
+                if w[kCGWindowName as String] as? String != nil {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    // MARK: - Menu Construction
+
     private func rebuildMenu(_ spaces: [Space]) {
         statusMenu.removeAllItems()
 
-        let switchMap = Space.buildSwitchIndexMap(for: spaces)
         var currentDisplayID: String?
 
         for space in spaces {
@@ -59,9 +87,59 @@ class StatusBarController: NSObject {
                 currentDisplayID = space.displayID
             }
 
-            let item = makeSpaceMenuItem(space: space, switchMap: switchMap)
+            let item = makeSpaceMenuItem(space: space)
             statusMenu.addItem(item)
         }
+
+        statusMenu.addItem(NSMenuItem.separator())
+
+        let renameItem = NSMenuItem(
+            title: "Rename Current Space...",
+            action: #selector(renameCurrentSpace),
+            keyEquivalent: "")
+        renameItem.target = self
+        statusMenu.addItem(renameItem)
+
+        let hasOverride: Bool = {
+            guard let current = spaces.first(where: { $0.isCurrentSpace }) else { return false }
+            let stored = SpaceNameStore.shared.loadAll()
+            return stored[current.spaceID]?.isUserOverride ?? false
+        }()
+        if hasOverride {
+            let clearItem = NSMenuItem(
+                title: "Clear Name Override",
+                action: #selector(clearCurrentSpaceName),
+                keyEquivalent: "")
+            clearItem.target = self
+            statusMenu.addItem(clearItem)
+        }
+
+        statusMenu.addItem(NSMenuItem.separator())
+
+        let hasAccessibility = checkAccessibility()
+        let hasAutomation = checkAutomation()
+        let hasScreenRecording = checkScreenRecording()
+
+        let accItem = NSMenuItem(
+            title: "\(hasAccessibility ? "+" : "-") Accessibility (switching)",
+            action: hasAccessibility ? nil : #selector(openAccessibilitySettings),
+            keyEquivalent: "")
+        accItem.target = self
+        statusMenu.addItem(accItem)
+
+        let autoItem = NSMenuItem(
+            title: "\(hasAutomation ? "+" : "-") Automation (System Events)",
+            action: hasAutomation ? nil : #selector(openAutomationSettings),
+            keyEquivalent: "")
+        autoItem.target = self
+        statusMenu.addItem(autoItem)
+
+        let scrItem = NSMenuItem(
+            title: "\(hasScreenRecording ? "+" : "-") Screen Recording (window names)",
+            action: hasScreenRecording ? nil : #selector(openScreenRecordingSettings),
+            keyEquivalent: "")
+        scrItem.target = self
+        statusMenu.addItem(scrItem)
 
         statusMenu.addItem(NSMenuItem.separator())
 
@@ -74,53 +152,138 @@ class StatusBarController: NSObject {
         statusMenu.addItem(quitItem)
     }
 
-    private func makeSpaceMenuItem(space: Space, switchMap: [String: Int]) -> NSMenuItem {
+    private func makeSpaceMenuItem(space: Space) -> NSMenuItem {
         let prefix = space.isFullScreen ? "F" : "\(space.spaceByDesktopID)"
-        let title = "\(prefix).  \(space.spaceName)"
 
-        let item = NSMenuItem(title: title, action: #selector(switchToSpace(_:)), keyEquivalent: "")
+        let item = NSMenuItem(
+            title: "\(prefix). \(space.spaceName)",
+            action: space.isCurrentSpace ? nil : #selector(switchToSpace(_:)),
+            keyEquivalent: "")
         item.target = self
         item.tag = space.spaceNumber
+        item.representedObject = space.spaceNumber
 
         if space.isCurrentSpace {
             item.state = .on
         }
+
+        let attrTitle = NSMutableAttributedString()
+
+        let numberAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium),
+            .foregroundColor: space.isCurrentSpace ? NSColor.controlAccentColor : NSColor.tertiaryLabelColor
+        ]
+        attrTitle.append(NSAttributedString(string: "\(prefix). ", attributes: numberAttrs))
+
+        let nameAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.menuFont(ofSize: 14),
+            .foregroundColor: space.isCurrentSpace ? NSColor.controlAccentColor : NSColor.labelColor
+        ]
+        attrTitle.append(NSAttributedString(string: space.spaceName, attributes: nameAttrs))
 
         if !space.windows.isEmpty {
             let appNames = uniqueAppNames(space.windows)
             let subtitle = appNames.joined(separator: ", ")
             item.toolTip = subtitle
 
-            let attrTitle = NSMutableAttributedString()
-
-            let titleAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.menuFont(ofSize: 14),
-                .foregroundColor: space.isCurrentSpace ? NSColor.controlAccentColor : NSColor.labelColor
+            let subtitleAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.menuFont(ofSize: 11),
+                .foregroundColor: NSColor.secondaryLabelColor
             ]
-            attrTitle.append(NSAttributedString(string: "\(prefix).  \(space.spaceName)", attributes: titleAttrs))
-
-            if !appNames.isEmpty {
-                let subtitleAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.menuFont(ofSize: 11),
-                    .foregroundColor: NSColor.secondaryLabelColor
-                ]
-                attrTitle.append(NSAttributedString(string: "\n     \(subtitle)", attributes: subtitleAttrs))
-            }
-
-            item.attributedTitle = attrTitle
+            attrTitle.append(NSAttributedString(string: "\n     \(subtitle)", attributes: subtitleAttrs))
         }
 
-        if let switchIndex = switchMap[space.spaceID], switchIndex > 0 {
-            item.representedObject = switchIndex
-        }
-
+        item.attributedTitle = attrTitle
         return item
     }
 
+    // MARK: - Actions
+
     @objc private func switchToSpace(_ sender: NSMenuItem) {
-        if let switchIndex = sender.representedObject as? Int {
-            spaceSwitcher.switchToSpace(spaceNumber: switchIndex)
+        guard let targetNumber = sender.representedObject as? Int else { return }
+        guard let current = currentSpaces.first(where: { $0.isCurrentSpace }) else { return }
+
+        let currentNumber = current.spaceNumber
+        if currentNumber == targetNumber { return }
+
+        if spaceSwitcher.canDirectSwitch(spaceNumber: targetNumber) {
+            spaceSwitcher.switchToSpace(spaceNumber: targetNumber) {
+                self.showSwitchError()
+            }
+        } else {
+            spaceSwitcher.navigateToSpace(from: currentNumber, to: targetNumber) {
+                self.showSwitchError()
+            }
         }
+    }
+
+    private func showSwitchError() {
+        let hasAcc = checkAccessibility()
+        let hasAuto = checkAutomation()
+        var msg = "Space switching failed.\n\n"
+        if !hasAcc { msg += "- Accessibility permission NOT granted\n" }
+        if !hasAuto { msg += "- Automation (System Events) permission NOT granted\n" }
+        if hasAcc && hasAuto { msg += "Both permissions appear granted. Try removing and re-adding Space Manager in System Settings > Privacy & Security > Accessibility, then restart the app." }
+
+        let alert = NSAlert()
+        alert.messageText = "Cannot Switch Spaces"
+        alert.informativeText = msg
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Dismiss")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            openAccessibilitySettings()
+        }
+    }
+
+    @objc private func renameCurrentSpace() {
+        guard let current = currentSpaces.first(where: { $0.isCurrentSpace }) else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Rename Space \(current.spaceByDesktopID)"
+        alert.informativeText = "Enter a custom name. Leave empty to use auto-detection."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        textField.stringValue = current.spaceName
+        textField.placeholderString = "Auto-detect"
+        alert.accessoryView = textField
+        alert.window.initialFirstResponder = textField
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let newName = textField.stringValue.trimmingCharacters(in: .whitespaces)
+            NotificationCenter.default.post(
+                name: NSNotification.Name("RenameSpace"),
+                object: nil,
+                userInfo: ["spaceID": current.spaceID, "name": newName])
+        }
+    }
+
+    @objc private func clearCurrentSpaceName() {
+        guard let current = currentSpaces.first(where: { $0.isCurrentSpace }) else { return }
+        NotificationCenter.default.post(
+            name: NSNotification.Name("RenameSpace"),
+            object: nil,
+            userInfo: ["spaceID": current.spaceID, "name": ""])
+    }
+
+    @objc private func openAccessibilitySettings() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    }
+
+    @objc private func openAutomationSettings() {
+        let script = "tell application \"System Events\" to return name of first process"
+        if let obj = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            obj.executeAndReturnError(&error)
+        }
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+    }
+
+    @objc private func openScreenRecordingSettings() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
     }
 
     @objc private func refreshSpaces() {
@@ -141,15 +304,7 @@ class StatusBarController: NSObject {
         }
         return result
     }
-
-    private func truncate(_ string: String, maxLength: Int) -> String {
-        if string.count <= maxLength { return string }
-        return String(string.prefix(maxLength - 1)) + "..."
-    }
 }
 
 extension StatusBarController: NSMenuDelegate {
-    func menuWillOpen(_ menu: NSMenu) {
-        NotificationCenter.default.post(name: NSNotification.Name("RequestSpaceRefresh"), object: nil)
-    }
 }
