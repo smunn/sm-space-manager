@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController!
 
     private var currentSpaces: [Space] = []
+    private var pendingCommandURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         windowDetector = WindowDetector()
@@ -38,6 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             selector: #selector(handleRenameSpace(_:)),
             name: NSNotification.Name("RenameSpace"),
             object: nil)
+
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL))
     }
 
     @objc private func handleRefreshRequest() {
@@ -50,6 +57,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let name = userInfo["name"] as? String
         else { return }
 
+        setSpaceName(spaceID: spaceID, name: name)
+    }
+
+    @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
+        guard let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: urlString)
+        else { return }
+
+        handleCommandURLWhenReady(url)
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            handleCommandURLWhenReady(url)
+        }
+    }
+
+    private func handleCommandURLWhenReady(_ url: URL) {
+        guard url.scheme?.lowercased() == "spacemanager" else { return }
+
+        if currentSpaces.isEmpty {
+            pendingCommandURLs.append(url)
+            spaceObserver.updateSpaceInformation()
+            return
+        }
+
+        handleCommandURL(url)
+    }
+
+    private func handleCommandURL(_ url: URL) {
+        let host = url.host?.lowercased() ?? ""
+        let path = url.path.lowercased()
+
+        switch (host, path) {
+        case ("rename-current", _), ("space", "/current/rename"):
+            guard let name = queryValue("name", in: url) ?? queryValue("title", in: url) else {
+                NSLog("SpaceManager API: rename-current missing name query parameter")
+                return
+            }
+            renameCurrentSpace(to: name)
+
+        case ("clear-current-name", _), ("space", "/current/clear-name"):
+            renameCurrentSpace(to: "")
+
+        case ("refresh", _):
+            spaceObserver.updateSpaceInformation()
+
+        case ("settings", _):
+            showSettingsWindow()
+
+        default:
+            NSLog("SpaceManager API: unsupported command URL \(url.absoluteString)")
+        }
+    }
+
+    private func queryValue(_ name: String, in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == name })?
+            .value
+    }
+
+    private func renameCurrentSpace(to name: String) {
+        guard let current = currentSpaces.first(where: { $0.isCurrentSpace }) else {
+            NSLog("SpaceManager API: no current space available")
+            return
+        }
+
+        setSpaceName(spaceID: current.spaceID, name: name)
+    }
+
+    private func setSpaceName(spaceID: String, name rawName: String) {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let nameStore = SpaceNameStore.shared
 
         if name.isEmpty {
@@ -63,8 +143,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let info = names[spaceID] {
                     names[spaceID] = info.withName(name, isOverride: true)
                 } else {
+                    let space = currentSpaces.first(where: { $0.spaceID == spaceID })
                     let newInfo = SpaceNameInfo(
-                        spaceNum: 0, spaceName: name, spaceByDesktopID: "",
+                        spaceNum: space?.spaceNumber ?? 0,
+                        spaceName: name,
+                        spaceByDesktopID: space?.spaceByDesktopID ?? "",
                         isUserOverride: true)
                     names[spaceID] = newInfo
                 }
@@ -72,6 +155,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         spaceObserver.updateSpaceInformation()
+    }
+
+    private func showSettingsWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        let didShowSettings = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        if !didShowSettings {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+    }
+
+    private func processPendingCommandURLs() {
+        guard !pendingCommandURLs.isEmpty else { return }
+        let urls = pendingCommandURLs
+        pendingCommandURLs.removeAll()
+
+        for url in urls {
+            handleCommandURL(url)
+        }
     }
 
     private func enrichAndDisplay(_ spaces: [Space]) {
@@ -94,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         currentSpaces = enriched
         statusBarController.updateSpaces(enriched)
+        processPendingCommandURLs()
     }
 }
 

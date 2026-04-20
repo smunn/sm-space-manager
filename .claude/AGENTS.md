@@ -4,19 +4,25 @@ macOS menu bar app for managing Spaces (virtual desktops). Built with AppKit, us
 
 ## Build & Deploy
 
-**Always rebuild and deploy after making changes.** Do not leave the user with unbuilt code.
+**Always rebuild and deploy a Release app to `/Applications` after making changes.** Do not leave the user with unbuilt code.
+
+**Never launch or leave Space Manager running from DerivedData.** Permissions, login items, URL schemes, and automation trust are tied to the signed app bundle path. Running a debug/DerivedData copy creates confusing duplicate app identities. The only acceptable running copy after changes is `/Applications/Space Manager.app`.
 
 ```bash
 # 1. Regenerate Xcode project (sources auto-discovered from SpaceManager/ directory)
 xcodegen generate
 
-# 2. Build
-xcodebuild -project SpaceManager.xcodeproj -scheme SpaceManager -configuration Debug build
+# 2. Build Release into the repo-local build directory
+xcodebuild -project SpaceManager.xcodeproj -scheme SpaceManager -configuration Release -derivedDataPath build build
 
-# 3. Kill existing instance and relaunch
-pkill -f "Space Manager" 2>/dev/null; sleep 0.5
-open ~/Library/Developer/Xcode/DerivedData/SpaceManager-*/Build/Products/Debug/Space\ Manager.app
+# 3. Kill any running copy, replace /Applications, and relaunch from /Applications
+pkill -9 -x "Space Manager" 2>/dev/null; sleep 0.5
+rm -rf "/Applications/Space Manager.app"
+cp -R "build/Build/Products/Release/Space Manager.app" /Applications/
+open "/Applications/Space Manager.app"
 ```
+
+`npm run deploy` performs the Release build, `/Applications` install, and relaunch. Prefer it after `xcodegen generate`.
 
 If the build fails, fix the issue and retry before moving on.
 

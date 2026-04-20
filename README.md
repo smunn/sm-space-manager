@@ -9,6 +9,9 @@ A macOS menu bar app that auto-detects Spaces, names them by their window conten
 - Dropdown lists every space with auto-generated names and app lists
 - Click a space to switch to it (uses arrow-key chaining — no "Switch to Desktop N" shortcuts required)
 - Rename spaces manually; names persist across rearranges and reboots
+- Rename the current space from scripts via `spacemanager://rename-current?name=Project`
+- Toggle "Open at login" from Settings
+- Create a new empty space or a starter Terminal space from the menu
 - Auto-names spaces based on: Xcode project names, Cursor/VS Code folder names, terminal working directories, Chrome profile/page context
 
 ## Reference Project
@@ -23,7 +26,7 @@ Key Spaceman files referenced during development:
 
 ## Permissions Required
 
-The app shows `+`/`-` status for each permission in the menu.
+The app shows permission status in Settings.
 
 | Permission | Purpose | Required? |
 |---|---|---|
@@ -46,6 +49,7 @@ SpaceManager/
 │   ├── ShortcutHelper.swift           # Reads keyboard shortcuts from macOS prefs
 │   ├── WindowDetector.swift           # Maps windows to spaces via CGWindowListCopyWindowInfo
 │   ├── SpaceNamer.swift               # Auto-naming from window titles + process CWDs
+│   ├── WorkspaceAutomation.swift      # Space templates built from Mission Control + app launch actions
 │   └── DisplayGeometryUtilities.swift # Multi-display ordering
 ├── Models/
 │   ├── Space.swift                    # Space data model
@@ -57,6 +61,8 @@ SpaceManager/
 ├── Utilities/
 │   ├── SpaceNameStore.swift           # UserDefaults persistence
 │   ├── ProcessHelper.swift            # Terminal shell CWD resolution (async + cached)
+│   ├── AppPermissions.swift           # Permission checks + System Settings links
+│   ├── LaunchAtLoginManager.swift     # SMAppService open-at-login wrapper
 │   └── Extensions.swift
 ├── Resources/
 │   ├── Info.plist
@@ -66,6 +72,11 @@ SpaceManager/
 ```
 
 ## How It Works
+
+### Settings
+The Settings window is opened from the menu bar item. It currently manages:
+- Open at login (`SMAppService.mainApp`)
+- Permission status and System Settings links
 
 ### Space Detection
 Uses `CGSCopyManagedDisplaySpaces()` (private Core Graphics API declared in the bridging header) to enumerate all spaces. Handles three scenarios with different matching strategies:
@@ -91,6 +102,39 @@ Reads macOS keyboard shortcuts from `com.apple.symbolichotkeys`. If "Switch to D
 ### Name Persistence
 User-overridden names are stored in UserDefaults keyed by macOS space ID (`ManagedSpaceID`). The `isUserOverride` flag distinguishes manual names from auto-generated ones. Clearing an override reverts to auto-detection.
 
+### Script API
+Space Manager registers the `spacemanager://` URL scheme for simple script integration.
+
+```bash
+# Rename the currently active space
+open "spacemanager://rename-current?name=WGU"
+
+# Clear the current space's manual name
+open "spacemanager://clear-current-name"
+
+# Refresh detected spaces
+open "spacemanager://refresh"
+
+# Open Settings
+open "spacemanager://settings"
+```
+
+For a project name that may contain spaces or special characters, URL-encode the name first:
+
+```bash
+name=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "My Project")
+open "spacemanager://rename-current?name=${name}"
+```
+
+### Workspace Automation
+macOS does not expose a public API for "create a desktop, name it, and assign windows to it." Space Manager composes available mechanisms:
+- Mission Control accessibility actions create or close Spaces.
+- Mission Control button clicks switch to a target Desktop.
+- `NSWorkspace` launches apps after the app has switched Spaces.
+- The script API applies the stored Space Manager name after creation.
+
+The first template is **New > Terminal Space**, which creates a desktop, switches to it, then launches Terminal. More templates can build on the same sequence with app-specific launch commands.
+
 ## Build & Deploy
 
 Requires [xcodegen](https://github.com/yonaskolb/XcodeGen) to regenerate the Xcode project from `project.yml`.
@@ -108,6 +152,8 @@ npm run deploy
 # 3. Copies .app to /Applications
 # 4. Launches the app
 ```
+
+Do not run Space Manager from DerivedData. Always launch `/Applications/Space Manager.app` after changes so macOS permissions, URL scheme ownership, login item registration, and automation trust all point at the same app bundle.
 
 The app is signed with `Apple Development: Scott Munn` to maintain a stable code signature across rebuilds, preserving macOS permission grants.
 

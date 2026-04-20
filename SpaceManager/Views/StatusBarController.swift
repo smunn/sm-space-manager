@@ -43,35 +43,6 @@ class StatusBarController: NSObject {
         }
     }
 
-    // MARK: - Permission Checks
-
-    private func checkAccessibility() -> Bool {
-        AXIsProcessTrusted()
-    }
-
-    private func checkAutomation() -> Bool {
-        let script = "tell application \"System Events\" to return name of first process"
-        guard let scriptObject = NSAppleScript(source: script) else { return false }
-        var error: NSDictionary?
-        scriptObject.executeAndReturnError(&error)
-        return error == nil
-    }
-
-    private func checkScreenRecording() -> Bool {
-        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
-            return false
-        }
-        for w in windowList {
-            let owner = w[kCGWindowOwnerName as String] as? String ?? ""
-            if owner == "Finder" || owner == "Google Chrome" || owner == "Terminal" || owner == "Safari" {
-                if w[kCGWindowName as String] as? String != nil {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
     // MARK: - Menu Construction
 
     private func rebuildMenu(_ spaces: [Space]) {
@@ -116,13 +87,13 @@ class StatusBarController: NSObject {
 
         statusMenu.addItem(NSMenuItem.separator())
 
+        let newItem = NSMenuItem(title: "New", action: nil, keyEquivalent: "")
+        newItem.submenu = buildNewSubmenu()
+        statusMenu.addItem(newItem)
+
         let closeItem = NSMenuItem(title: "Close", action: nil, keyEquivalent: "")
         closeItem.submenu = buildCloseSubmenu(spaces)
         statusMenu.addItem(closeItem)
-
-        let addSpaceItem = NSMenuItem(title: "Add Space", action: #selector(addSpace), keyEquivalent: "")
-        addSpaceItem.target = self
-        statusMenu.addItem(addSpaceItem)
 
         let missionControlItem = NSMenuItem(title: "Mission Control", action: #selector(showMissionControl), keyEquivalent: "m")
         missionControlItem.target = self
@@ -130,30 +101,9 @@ class StatusBarController: NSObject {
 
         statusMenu.addItem(NSMenuItem.separator())
 
-        let hasAccessibility = checkAccessibility()
-        let hasAutomation = checkAutomation()
-        let hasScreenRecording = checkScreenRecording()
-
-        let accItem = NSMenuItem(
-            title: "\(hasAccessibility ? "+" : "-") Accessibility (switching)",
-            action: hasAccessibility ? nil : #selector(openAccessibilitySettings),
-            keyEquivalent: "")
-        accItem.target = self
-        statusMenu.addItem(accItem)
-
-        let autoItem = NSMenuItem(
-            title: "\(hasAutomation ? "+" : "-") Automation (System Events)",
-            action: hasAutomation ? nil : #selector(openAutomationSettings),
-            keyEquivalent: "")
-        autoItem.target = self
-        statusMenu.addItem(autoItem)
-
-        let scrItem = NSMenuItem(
-            title: "\(hasScreenRecording ? "+" : "-") Screen Recording (window names)",
-            action: hasScreenRecording ? nil : #selector(openScreenRecordingSettings),
-            keyEquivalent: "")
-        scrItem.target = self
-        statusMenu.addItem(scrItem)
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        statusMenu.addItem(settingsItem)
 
         statusMenu.addItem(NSMenuItem.separator())
 
@@ -209,6 +159,22 @@ class StatusBarController: NSObject {
 
         item.attributedTitle = attrTitle
         return item
+    }
+
+    // MARK: - New Submenu
+
+    private func buildNewSubmenu() -> NSMenu {
+        let submenu = NSMenu()
+
+        let emptyItem = NSMenuItem(title: "Empty Space", action: #selector(addSpace), keyEquivalent: "")
+        emptyItem.target = self
+        submenu.addItem(emptyItem)
+
+        let terminalItem = NSMenuItem(title: "Terminal Space", action: #selector(addTerminalSpace), keyEquivalent: "")
+        terminalItem.target = self
+        submenu.addItem(terminalItem)
+
+        return submenu
     }
 
     // MARK: - Close Submenu
@@ -306,8 +272,8 @@ class StatusBarController: NSObject {
     }
 
     private func showSwitchError() {
-        let hasAcc = checkAccessibility()
-        let hasAuto = checkAutomation()
+        let hasAcc = AppPermissions.check(.accessibility)
+        let hasAuto = AppPermissions.check(.automation)
         var msg = "Space switching failed.\n\n"
         if !hasAcc { msg += "- Accessibility permission NOT granted\n" }
         if !hasAuto { msg += "- Automation (System Events) permission NOT granted\n" }
@@ -320,7 +286,7 @@ class StatusBarController: NSObject {
         alert.addButton(withTitle: "Dismiss")
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            openAccessibilitySettings()
+            AppPermissions.openSettings(for: .accessibility)
         }
     }
 
@@ -355,23 +321,6 @@ class StatusBarController: NSObject {
             name: NSNotification.Name("RenameSpace"),
             object: nil,
             userInfo: ["spaceID": current.spaceID, "name": ""])
-    }
-
-    @objc private func openAccessibilitySettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-    }
-
-    @objc private func openAutomationSettings() {
-        let script = "tell application \"System Events\" to return name of first process"
-        if let obj = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            obj.executeAndReturnError(&error)
-        }
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
-    }
-
-    @objc private func openScreenRecordingSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
     }
 
     @objc private func closeSpace(_ sender: NSMenuItem) {
@@ -428,8 +377,30 @@ class StatusBarController: NSObject {
         }
     }
 
+    @objc private func addTerminalSpace() {
+        let desktopNumbers = currentSpaces
+            .filter { !$0.isFullScreen }
+            .compactMap { Int($0.spaceByDesktopID) }
+        let targetDesktopNumber = (desktopNumbers.max() ?? desktopNumbers.count) + 1
+
+        WorkspaceAutomation.createTerminalSpace(
+            targetDesktopNumber: targetDesktopNumber,
+            spaceSwitcher: spaceSwitcher
+        ) { [weak self] _ in
+            self?.refreshAfterClose()
+        }
+    }
+
     @objc private func showMissionControl() {
         NSWorkspace.shared.launchApplication("Mission Control")
+    }
+
+    @objc private func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        let didShowSettings = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        if !didShowSettings {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
     }
 
     private func refreshAfterClose() {

@@ -11,8 +11,7 @@ struct SpaceManagerApp: App {
 
     var body: some Scene {
         Settings {
-            Text("Space Manager Preferences")
-                .padding()
+            SettingsView()
         }
     }
 }
