@@ -13,9 +13,10 @@ import Cocoa
 enum WorkspaceAutomation {
     static func createTerminalSpace(
         targetDesktopNumber: Int,
+        displayGroupIndex: Int = 1,
         completion: @escaping (Bool) -> Void
     ) {
-        SpaceCloser.addSpaceAndSwitch(toDesktopNumber: targetDesktopNumber) { success in
+        SpaceCloser.addSpaceAndSwitch(toDesktopNumber: targetDesktopNumber, displayGroupIndex: displayGroupIndex) { success in
             guard success else {
                 completion(false)
                 return

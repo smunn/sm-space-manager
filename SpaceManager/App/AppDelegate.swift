@@ -40,6 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSNotification.Name("RenameSpace"),
             object: nil)
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTransferSpace(_:)),
+            name: NSNotification.Name("TransferSpace"),
+            object: nil)
+
         NSAppleEventManager.shared().setEventHandler(
             self,
             andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)),
@@ -58,6 +64,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return }
 
         setSpaceName(spaceID: spaceID, name: name)
+    }
+
+    @objc private func handleTransferSpace(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let sourceSpaceID = userInfo["sourceSpaceID"] as? String,
+              let sourceDisplayID = userInfo["sourceDisplayID"] as? String,
+              let targetDisplayID = userInfo["targetDisplayID"] as? String
+        else { return }
+
+        let windows = windowDetector.windows(for: sourceSpaceID)
+
+        let moved = windows.isEmpty ? 0 : SpaceTransfer.transferWindows(
+            windows, fromDisplay: sourceDisplayID, toDisplay: targetDisplayID)
+
+        let wallpaperOK = SpaceTransfer.transferWallpaper(
+            fromDisplay: sourceDisplayID, toDisplay: targetDisplayID)
+
+        // Transfer user-overridden name to the target display's current space
+        let stored = SpaceNameStore.shared.loadAll()
+        if stored[sourceSpaceID]?.isUserOverride == true {
+            if let targetSpace = currentSpaces.first(where: {
+                $0.displayID == targetDisplayID && $0.isCurrentSpace
+            }) {
+                setSpaceName(spaceID: targetSpace.spaceID, name: stored[sourceSpaceID]!.spaceName)
+                setSpaceName(spaceID: sourceSpaceID, name: "")
+            }
+        }
+
+        NSLog("SpaceTransfer: moved \(moved)/\(windows.count) windows, wallpaper: \(wallpaperOK)")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.spaceObserver.updateSpaceInformation()
+        }
     }
 
     @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {

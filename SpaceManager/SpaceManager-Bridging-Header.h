@@ -13,7 +13,7 @@
 
 int _CGSDefaultConnection(void);
 CFArrayRef CGSCopyManagedDisplaySpaces(int conn);
-id CGSCopyActiveMenuBarDisplayIdentifier(int conn);
+CFStringRef CGSCopyActiveMenuBarDisplayIdentifier(int conn);
 
 // Maps window IDs to the space(s) they belong to.
 // type is a bitmask: 1=current, 2=other, 0x7=all spaces.

@@ -23,6 +23,7 @@
 		6ACA2F83191EA92F21494A66 /* AppPermissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33DD1593956E51F3327F6C9D /* AppPermissions.swift */; };
 		74AD8F057D4D367178EE04DF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5FD7AC909FBAF3280A7ADB5E /* Assets.xcassets */; };
 		79B306578A1BD5062718CBD7 /* View+DebugLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4FF5B5E97D65212F53962BB /* View+DebugLabel.swift */; };
+		7A667BD4DA36417C5AA1E583 /* SpaceTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC80DA235AD47C992270A3B /* SpaceTransfer.swift */; };
 		A6B0E111C975490EE6BD25B0 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B554C5F7DF1B6C58AF4301F4 /* AppDelegate.swift */; };
 		ABE439E098D8935AC52C38F2 /* WindowDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FCD10B9F25963D2BECC467D /* WindowDetector.swift */; };
 		B6389B5374D0DC9DD7D5D685 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0F9A7165BF4C3B5090A6F3 /* Extensions.swift */; };
@@ -37,6 +38,7 @@
 		1CCEF522DC0B4871C7115D84 /* SpaceNamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceNamer.swift; sourceTree = "<group>"; };
 		33DD1593956E51F3327F6C9D /* AppPermissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPermissions.swift; sourceTree = "<group>"; };
 		4363450A7549D2DDE4A1B5A5 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
+		4AC80DA235AD47C992270A3B /* SpaceTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceTransfer.swift; sourceTree = "<group>"; };
 		57585FBBA87AD89D93D009B7 /* DisplayDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayDirection.swift; sourceTree = "<group>"; };
 		5B4013259C7C740B1425CD77 /* SpaceManager.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpaceManager.entitlements; sourceTree = "<group>"; };
 		5C5673C90FAED6A821AE32F2 /* SpaceManager-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SpaceManager-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -93,6 +95,7 @@
 				1CCEF522DC0B4871C7115D84 /* SpaceNamer.swift */,
 				CC1761DA8F106DAD6C9F477D /* SpaceObserver.swift */,
 				993C119C5A1753F1A427B3D8 /* SpaceSwitcher.swift */,
+				4AC80DA235AD47C992270A3B /* SpaceTransfer.swift */,
 				5FCD10B9F25963D2BECC467D /* WindowDetector.swift */,
 				E075B3BEBED8138ABF9F40DC /* WorkspaceAutomation.swift */,
 			);
@@ -248,6 +251,7 @@
 				CFEE86A9515F441B273A001F /* SpaceNamer.swift in Sources */,
 				356A486F57BE432D0C285854 /* SpaceObserver.swift in Sources */,
 				DBE2A6EADF22BC51A5D7EA32 /* SpaceSwitcher.swift in Sources */,
+				7A667BD4DA36417C5AA1E583 /* SpaceTransfer.swift in Sources */,
 				3CA4D8E78B9433E0C9B72FB8 /* SpaceWindow.swift in Sources */,
 				5C958F87782A7D6A42CBE17A /* StatusBarController.swift in Sources */,
 				79B306578A1BD5062718CBD7 /* View+DebugLabel.swift in Sources */,
