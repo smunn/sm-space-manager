@@ -61,10 +61,29 @@ class SpaceCloser {
     static func addSpace(completion: @escaping (Bool) -> Void) {
         let script = buildAddScript()
 
+        execute(script: script, completion: completion)
+    }
+
+    /// Adds a new desktop space, then immediately switches to it from Mission Control.
+    ///
+    /// This is more reliable than adding a space, dismissing Mission Control, reopening
+    /// Mission Control, and then switching. It keeps the Spaces Bar open long enough for
+    /// macOS to create the new "Desktop N" button, clicks that button, and lets Mission
+    /// Control perform the actual transition to the new desktop.
+    static func addSpaceAndSwitch(toDesktopNumber desktopNumber: Int, completion: @escaping (Bool) -> Void) {
+        let script = buildAddAndSwitchScript(desktopNumber: desktopNumber)
+
+        execute(script: script, completion: completion)
+    }
+
+    private static func execute(script: String, completion: @escaping (Bool) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let appleScript = NSAppleScript(source: script)
             var error: NSDictionary?
             appleScript?.executeAndReturnError(&error)
+            if let error {
+                NSLog("SpaceCloser AppleScript failed: \(error)")
+            }
             DispatchQueue.main.async {
                 completion(error == nil)
             }
@@ -122,6 +141,41 @@ class SpaceCloser {
         lines.append("  end tell")
         lines.append("  delay 0.5")
         lines.append("  key code 53")
+        lines.append("end tell")
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func buildAddAndSwitchScript(desktopNumber: Int) -> String {
+        var lines: [String] = []
+        lines.append("tell application \"Mission Control\" to launch")
+        lines.append("delay 0.7")
+        lines.append("")
+        lines.append("tell application \"System Events\"")
+        lines.append("  tell process \"Dock\"")
+        lines.append("    tell group \"Mission Control\"")
+        lines.append("      tell group 1")
+        lines.append("        tell group \"Spaces Bar\"")
+        // The "+" button is a standalone button inside Spaces Bar (outside the list).
+        lines.append("          click button 1")
+        lines.append("          delay 0.6")
+        lines.append("          tell list 1")
+        lines.append("            set didClickDesktop to false")
+        lines.append("            repeat 20 times")
+        lines.append("              try")
+        lines.append("                click button \"Desktop \(desktopNumber)\"")
+        lines.append("                set didClickDesktop to true")
+        lines.append("                exit repeat")
+        lines.append("              on error")
+        lines.append("                delay 0.1")
+        lines.append("              end try")
+        lines.append("            end repeat")
+        lines.append("            if didClickDesktop is false then error \"Could not find Desktop \(desktopNumber)\"")
+        lines.append("          end tell")
+        lines.append("        end tell")
+        lines.append("      end tell")
+        lines.append("    end tell")
+        lines.append("  end tell")
         lines.append("end tell")
 
         return lines.joined(separator: "\n")

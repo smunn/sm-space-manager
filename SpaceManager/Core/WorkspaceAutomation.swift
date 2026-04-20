@@ -13,34 +13,35 @@ import Cocoa
 enum WorkspaceAutomation {
     static func createTerminalSpace(
         targetDesktopNumber: Int,
-        spaceSwitcher: SpaceSwitcher,
         completion: @escaping (Bool) -> Void
     ) {
-        SpaceCloser.addSpace { success in
+        SpaceCloser.addSpaceAndSwitch(toDesktopNumber: targetDesktopNumber) { success in
             guard success else {
                 completion(false)
                 return
             }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                spaceSwitcher.switchViaMissionControl(desktopNumber: targetDesktopNumber)
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    openTerminal(completion: completion)
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                openTerminalWindow(completion: completion)
             }
         }
     }
 
-    private static func openTerminal(completion: @escaping (Bool) -> Void) {
-        guard let terminalURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else {
-            completion(false)
-            return
-        }
+    private static func openTerminalWindow(completion: @escaping (Bool) -> Void) {
+        let script = """
+        tell application "Terminal"
+          activate
+          do script ""
+        end tell
+        """
 
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.openApplication(at: terminalURL, configuration: configuration) { _, error in
+        DispatchQueue.global(qos: .userInitiated).async {
+            let appleScript = NSAppleScript(source: script)
+            var error: NSDictionary?
+            appleScript?.executeAndReturnError(&error)
+            if let error {
+                NSLog("WorkspaceAutomation Terminal AppleScript failed: \(error)")
+            }
             DispatchQueue.main.async {
                 completion(error == nil)
             }

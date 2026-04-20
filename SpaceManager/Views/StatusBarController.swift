@@ -184,6 +184,23 @@ class StatusBarController: NSObject {
 
         let desktopSpaces = spaces.filter { !$0.isFullScreen }
         let hasMultipleDesktops = desktopSpaces.count > 1
+        let currentDesktop = spaces.first { $0.isCurrentSpace && !$0.isFullScreen }
+
+        let closeCurrentTitle: String
+        if let currentDesktop {
+            closeCurrentTitle = "Close Current Space (\(currentDesktop.spaceByDesktopID))"
+        } else {
+            closeCurrentTitle = "Close Current Space"
+        }
+
+        let closeCurrentItem = NSMenuItem(
+            title: closeCurrentTitle,
+            action: currentDesktop != nil && hasMultipleDesktops ? #selector(closeCurrentSpace) : nil,
+            keyEquivalent: "")
+        closeCurrentItem.target = self
+        submenu.addItem(closeCurrentItem)
+
+        submenu.addItem(NSMenuItem.separator())
 
         for space in desktopSpaces {
             let item = makeCloseMenuItem(space: space, enabled: hasMultipleDesktops)
@@ -330,6 +347,19 @@ class StatusBarController: NSObject {
         }
     }
 
+    @objc private func closeCurrentSpace() {
+        guard let current = currentSpaces.first(where: { $0.isCurrentSpace && !$0.isFullScreen }),
+              let desktopNumber = Int(current.spaceByDesktopID)
+        else { return }
+
+        let desktopSpaces = currentSpaces.filter { !$0.isFullScreen }
+        guard desktopSpaces.count > 1 else { return }
+
+        SpaceCloser.closeSpaces(desktopNumbers: [desktopNumber]) { [weak self] _ in
+            self?.refreshAfterClose()
+        }
+    }
+
     @objc private func closeEmptySpaces() {
         let freshWindows = WindowDetector.detectWindowsPerSpace()
         let desktopSpaces = currentSpaces.filter { !$0.isFullScreen }
@@ -384,8 +414,7 @@ class StatusBarController: NSObject {
         let targetDesktopNumber = (desktopNumbers.max() ?? desktopNumbers.count) + 1
 
         WorkspaceAutomation.createTerminalSpace(
-            targetDesktopNumber: targetDesktopNumber,
-            spaceSwitcher: spaceSwitcher
+            targetDesktopNumber: targetDesktopNumber
         ) { [weak self] _ in
             self?.refreshAfterClose()
         }
