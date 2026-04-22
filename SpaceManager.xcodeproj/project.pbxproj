@@ -195,7 +195,7 @@
 				TargetAttributes = {
 					CD8E8DD9F1C64583FCDEA062 = {
 						DevelopmentTeam = YXX3W2NJA2;
-						ProvisioningStyle = Manual;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -387,8 +387,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = SpaceManager/Resources/SpaceManager.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development: Scott Munn (B9H95944YF)";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YXX3W2NJA2;
@@ -413,8 +412,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = SpaceManager/Resources/SpaceManager.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development: Scott Munn (B9H95944YF)";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YXX3W2NJA2;

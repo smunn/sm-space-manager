@@ -2,68 +2,82 @@
 //  LaunchAtLoginManager.swift
 //  SpaceManager
 //
-//  Wraps SMAppService.mainApp for the Settings UI.
+//  Manages a LaunchAgent plist in ~/Library/LaunchAgents to open
+//  the app at login. Uses launchd directly instead of SMAppService,
+//  which requires a provisioning profile that free Apple Developer
+//  accounts don't provide for macOS.
 //
 
+import AppKit
 import Combine
-import Foundation
-import ServiceManagement
 
 @MainActor
 final class LaunchAtLoginManager: ObservableObject {
-    @Published private(set) var status: SMAppService.Status = SMAppService.mainApp.status
+    @Published private(set) var isEnabled: Bool = false
     @Published var errorMessage: String?
 
-    var isEnabled: Bool {
-        status == .enabled || status == .requiresApproval
-    }
+    var canToggle: Bool { true }
 
-    var canToggle: Bool {
-        status != .notFound
-    }
-
-    var needsApproval: Bool {
-        status == .requiresApproval
-    }
+    var needsApproval: Bool { false }
 
     var statusText: String {
-        switch status {
-        case .enabled:
-            return "Enabled"
-        case .requiresApproval:
-            return "Needs approval"
-        case .notRegistered:
-            return "Off"
-        case .notFound:
-            return "Unavailable"
-        @unknown default:
-            return "Unknown"
-        }
+        isEnabled ? "Enabled" : "Off"
+    }
+
+    private static let plistURL: URL = {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/com.smunn.SpaceManager.plist")
+    }()
+
+    init() {
+        refresh()
     }
 
     func refresh() {
-        status = SMAppService.mainApp.status
+        isEnabled = FileManager.default.fileExists(atPath: Self.plistURL.path)
     }
 
     func setEnabled(_ enabled: Bool) {
         errorMessage = nil
-
         do {
             if enabled {
-                guard status != .enabled && status != .requiresApproval else { return }
-                try SMAppService.mainApp.register()
+                try writePlist()
             } else {
-                guard status != .notRegistered else { return }
-                try SMAppService.mainApp.unregister()
+                try removePlist()
             }
         } catch {
             errorMessage = error.localizedDescription
         }
-
         refresh()
     }
 
     func openLoginItemsSettings() {
-        SMAppService.openSystemSettingsLoginItems()
+        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func writePlist() throws {
+        let dir = Self.plistURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let executablePath = Bundle.main.executablePath
+            ?? "/Applications/Space Manager.app/Contents/MacOS/Space Manager"
+
+        let plist: [String: Any] = [
+            "Label": "com.smunn.SpaceManager",
+            "ProgramArguments": [executablePath],
+            "RunAtLoad": true,
+        ]
+
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: plist, format: .xml, options: 0
+        )
+        try data.write(to: Self.plistURL, options: .atomic)
+    }
+
+    private func removePlist() throws {
+        guard FileManager.default.fileExists(atPath: Self.plistURL.path) else { return }
+        try FileManager.default.removeItem(at: Self.plistURL)
     }
 }
