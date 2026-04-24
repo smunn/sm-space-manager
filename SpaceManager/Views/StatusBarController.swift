@@ -148,6 +148,10 @@ class StatusBarController: NSObject {
         closeItem.submenu = buildCloseSubmenu(spaces)
         statusMenu.addItem(closeItem)
 
+        let workspaceItem = NSMenuItem(title: "New Workspace", action: nil, keyEquivalent: "")
+        workspaceItem.submenu = buildWorkspaceSubmenu()
+        statusMenu.addItem(workspaceItem)
+
         let missionControlItem = NSMenuItem(title: "Mission Control", action: #selector(showMissionControl), keyEquivalent: "m")
         missionControlItem.target = self
         statusMenu.addItem(missionControlItem)
@@ -279,6 +283,50 @@ class StatusBarController: NSObject {
         return submenu
     }
 
+    // MARK: - Workspace Submenu
+
+    private func buildWorkspaceSubmenu() -> NSMenu {
+        let submenu = NSMenu()
+        let workspaces = WorkspaceConfig.loadWorkspaces()
+
+        if workspaces.isEmpty {
+            let item = NSMenuItem(title: "No workspaces found", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            submenu.addItem(item)
+            return submenu
+        }
+
+        for workspace in workspaces {
+            let item = NSMenuItem(
+                title: workspace.displayName,
+                action: #selector(launchWorkspace(_:)),
+                keyEquivalent: "")
+            item.target = self
+            item.representedObject = workspace.key
+            submenu.addItem(item)
+        }
+
+        return submenu
+    }
+
+    @objc private func launchWorkspace(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String else { return }
+
+        let activeUUID = DisplayGeometryUtilities.activeDisplayUUID(from: physicalDisplayOrder)
+        let desktopsOnDisplay = currentSpaces.filter {
+            $0.displayID == (activeUUID ?? "") && !$0.isFullScreen
+        }
+        let targetDesktopNumber = desktopsOnDisplay.count + 1
+        let groupIndex = activeDisplayGroupIndex()
+
+        SpaceCloser.addSpaceAndSwitch(
+            toDesktopNumber: targetDesktopNumber,
+            displayGroupIndex: groupIndex
+        ) { _ in
+            WorkspaceLauncher.launch(key)
+        }
+    }
+
     // MARK: - Close Submenu
 
     private func buildCloseSubmenu(_ spaces: [Space]) -> NSMenu {
@@ -301,6 +349,15 @@ class StatusBarController: NSObject {
             keyEquivalent: "")
         closeCurrentItem.target = self
         submenu.addItem(closeCurrentItem)
+
+        let hasWindows = currentDesktop.map { !$0.windows.isEmpty } ?? false
+        let closeWithWindowsItem = NSMenuItem(
+            title: "Close Current Space and Windows",
+            action: currentDesktop != nil && hasMultipleDesktops && hasWindows
+                ? #selector(closeCurrentSpaceAndWindows) : nil,
+            keyEquivalent: "")
+        closeWithWindowsItem.target = self
+        submenu.addItem(closeWithWindowsItem)
 
         submenu.addItem(NSMenuItem.separator())
 
@@ -505,6 +562,61 @@ class StatusBarController: NSObject {
 
         SpaceCloser.closeSpaces(targets: [target]) { [weak self] _ in
             self?.refreshAfterClose()
+        }
+    }
+
+    @objc private func closeCurrentSpaceAndWindows() {
+        guard let current = currentSpaces.first(where: { $0.isCurrentSpace && !$0.isFullScreen }),
+              let target = closeTarget(for: current) else { return }
+
+        let sameDisplayDesktops = currentSpaces.filter {
+            $0.displayID == current.displayID && !$0.isFullScreen
+        }
+        guard sameDisplayDesktops.count > 1 else { return }
+
+        closeWindowsViaAccessibility(current.windows)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            SpaceCloser.closeSpaces(targets: [target]) { [weak self] _ in
+                self?.refreshAfterClose()
+            }
+        }
+    }
+
+    private func closeWindowsViaAccessibility(_ windows: [SpaceWindow]) {
+        for window in windows {
+            let appElement = AXUIElementCreateApplication(window.ownerPID)
+            var axWindowsRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(
+                appElement, kAXWindowsAttribute as CFString, &axWindowsRef) == .success,
+                  let axWindows = axWindowsRef as? [AXUIElement]
+            else { continue }
+
+            for axWindow in axWindows {
+                var posRef: CFTypeRef?
+                var sizeRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef)
+                AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeRef)
+
+                var pos = CGPoint.zero
+                var size = CGSize.zero
+                if let p = posRef { AXValueGetValue(p as! AXValue, .cgPoint, &pos) }
+                if let s = sizeRef { AXValueGetValue(s as! AXValue, .cgSize, &size) }
+
+                let axBounds = CGRect(origin: pos, size: size)
+                guard abs(axBounds.origin.x - window.bounds.origin.x) < 2,
+                      abs(axBounds.origin.y - window.bounds.origin.y) < 2,
+                      abs(axBounds.width - window.bounds.width) < 2,
+                      abs(axBounds.height - window.bounds.height) < 2
+                else { continue }
+
+                var closeRef: CFTypeRef?
+                if AXUIElementCopyAttributeValue(
+                    axWindow, kAXCloseButtonAttribute as CFString, &closeRef) == .success {
+                    AXUIElementPerformAction(closeRef as! AXUIElement, kAXPressAction as CFString)
+                }
+                break
+            }
         }
     }
 
