@@ -36,18 +36,28 @@ class SpaceCloser {
         let desktopNumber: Int
     }
 
+    /// A desktop to activate after closing spaces.
+    struct FocusTarget {
+        let displayGroup: Int
+        let desktopNumber: Int
+    }
+
     /// Closes desktop spaces by performing AXRemoveDesktop in Mission Control.
     ///
     /// Opens Mission Control, locates "Desktop N" buttons in each display's Spaces Bar,
     /// performs AXRemoveDesktop on each (highest first within each group to preserve numbering),
     /// then dismisses Mission Control via Escape.
-    static func closeSpaces(targets: [CloseTarget], completion: @escaping (Bool) -> Void) {
+    static func closeSpaces(
+        targets: [CloseTarget],
+        focusTarget: FocusTarget? = nil,
+        completion: @escaping (Bool) -> Void
+    ) {
         guard !targets.isEmpty else {
             completion(false)
             return
         }
 
-        let script = buildCloseScript(targets: targets)
+        let script = buildCloseScript(targets: targets, focusTarget: focusTarget)
         execute(script: script, completion: completion)
     }
 
@@ -85,7 +95,7 @@ class SpaceCloser {
 
     // Groups targets by display, sorts highest desktop number first within each
     // group to preserve numbering during removal.
-    private static func buildCloseScript(targets: [CloseTarget]) -> String {
+    private static func buildCloseScript(targets: [CloseTarget], focusTarget: FocusTarget?) -> String {
         let grouped = Dictionary(grouping: targets, by: { $0.displayGroup })
 
         var lines: [String] = []
@@ -114,10 +124,32 @@ class SpaceCloser {
             lines.append("      end tell")
         }
 
+        if let focusTarget {
+            lines.append("      tell group \(focusTarget.displayGroup)")
+            lines.append("        tell group \"Spaces Bar\"")
+            lines.append("          tell list 1")
+            lines.append("            set didClickDesktop to false")
+            lines.append("            repeat 20 times")
+            lines.append("              try")
+            lines.append("                click button \"Desktop \(focusTarget.desktopNumber)\"")
+            lines.append("                set didClickDesktop to true")
+            lines.append("                exit repeat")
+            lines.append("              on error")
+            lines.append("                delay 0.1")
+            lines.append("              end try")
+            lines.append("            end repeat")
+            lines.append("            if didClickDesktop is false then error \"Could not find Desktop \(focusTarget.desktopNumber)\"")
+            lines.append("          end tell")
+            lines.append("        end tell")
+            lines.append("      end tell")
+        }
+
         lines.append("    end tell")
         lines.append("  end tell")
-        lines.append("  delay 0.3")
-        lines.append("  key code 53")
+        if focusTarget == nil {
+            lines.append("  delay 0.3")
+            lines.append("  key code 53")
+        }
         lines.append("end tell")
 
         return lines.joined(separator: "\n")

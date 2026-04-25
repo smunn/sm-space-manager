@@ -522,6 +522,47 @@ class StatusBarController: NSObject {
             desktopNumber: desktopNum)
     }
 
+    private func focusTarget(afterClosing targetSpaces: [Space], preferredClosedSpace: Space) -> SpaceCloser.FocusTarget? {
+        let targetIDs = Set(targetSpaces.map { $0.spaceID })
+        let displaySpaces = currentSpaces.filter {
+            $0.displayID == preferredClosedSpace.displayID && !$0.isFullScreen
+        }
+        guard let closingIndex = displaySpaces.firstIndex(where: { $0.spaceID == preferredClosedSpace.spaceID }) else {
+            return nil
+        }
+
+        let remainingSpaces = displaySpaces.filter { !targetIDs.contains($0.spaceID) }
+        guard !remainingSpaces.isEmpty else { return nil }
+
+        var focusSpace: Space?
+        if closingIndex > 0 {
+            for index in stride(from: closingIndex - 1, through: 0, by: -1) {
+                let candidate = displaySpaces[index]
+                if !targetIDs.contains(candidate.spaceID) {
+                    focusSpace = candidate
+                    break
+                }
+            }
+        }
+        if focusSpace == nil {
+            for index in (closingIndex + 1)..<displaySpaces.count {
+                let candidate = displaySpaces[index]
+                if !targetIDs.contains(candidate.spaceID) {
+                    focusSpace = candidate
+                    break
+                }
+            }
+        }
+
+        guard let focusSpace,
+              let finalIndex = remainingSpaces.firstIndex(where: { $0.spaceID == focusSpace.spaceID })
+        else { return nil }
+
+        return SpaceCloser.FocusTarget(
+            displayGroup: displayGroupIndex(for: focusSpace.displayID),
+            desktopNumber: finalIndex + 1)
+    }
+
     // MARK: - Actions
 
     @objc private func switchToSpace(_ sender: NSMenuItem) {
@@ -610,7 +651,8 @@ class StatusBarController: NSObject {
         guard let spaceID = sender.representedObject as? String,
               let space = currentSpaces.first(where: { $0.spaceID == spaceID }),
               let target = closeTarget(for: space) else { return }
-        SpaceCloser.closeSpaces(targets: [target]) { [weak self] _ in
+        let focusTarget = self.focusTarget(afterClosing: [space], preferredClosedSpace: space)
+        SpaceCloser.closeSpaces(targets: [target], focusTarget: focusTarget) { [weak self] _ in
             self?.refreshAfterClose()
         }
     }
@@ -624,7 +666,8 @@ class StatusBarController: NSObject {
         }
         guard sameDisplayDesktops.count > 1 else { return }
 
-        SpaceCloser.closeSpaces(targets: [target]) { [weak self] _ in
+        let focusTarget = self.focusTarget(afterClosing: [current], preferredClosedSpace: current)
+        SpaceCloser.closeSpaces(targets: [target], focusTarget: focusTarget) { [weak self] _ in
             self?.refreshAfterClose()
         }
     }
@@ -641,7 +684,8 @@ class StatusBarController: NSObject {
         closeWindowsViaAccessibility(current.windows)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            SpaceCloser.closeSpaces(targets: [target]) { [weak self] _ in
+            let focusTarget = self.focusTarget(afterClosing: [current], preferredClosedSpace: current)
+            SpaceCloser.closeSpaces(targets: [target], focusTarget: focusTarget) { [weak self] _ in
                 self?.refreshAfterClose()
             }
         }
@@ -695,19 +739,27 @@ class StatusBarController: NSObject {
         let byDisplay = Dictionary(grouping: desktopSpaces, by: { $0.displayID })
         let emptyByDisplay = Dictionary(grouping: emptySpaces, by: { $0.displayID })
 
-        var targets: [SpaceCloser.CloseTarget] = []
+        var targetSpaces: [Space] = []
         for (displayID, allOnDisplay) in byDisplay {
             guard var emptyOnDisplay = emptyByDisplay[displayID] else { continue }
             let occupiedCount = allOnDisplay.count - emptyOnDisplay.count
             if occupiedCount == 0 {
                 emptyOnDisplay.removeFirst()
             }
-            targets += emptyOnDisplay.compactMap { closeTarget(for: $0) }
+            targetSpaces += emptyOnDisplay
         }
 
+        let targets = targetSpaces.compactMap { closeTarget(for: $0) }
         guard !targets.isEmpty else { return }
 
-        SpaceCloser.closeSpaces(targets: targets) { [weak self] _ in
+        let current = currentSpaces.first { $0.isCurrentSpace && !$0.isFullScreen }
+        let focusTarget = current.flatMap { current in
+            targetSpaces.contains(where: { $0.spaceID == current.spaceID })
+                ? self.focusTarget(afterClosing: targetSpaces, preferredClosedSpace: current)
+                : nil
+        }
+
+        SpaceCloser.closeSpaces(targets: targets, focusTarget: focusTarget) { [weak self] _ in
             self?.refreshAfterClose()
         }
     }
@@ -718,16 +770,13 @@ class StatusBarController: NSObject {
 
         // Keep at least one desktop per display
         let byDisplay = Dictionary(grouping: desktopSpaces, by: { $0.displayID })
-        var targets: [SpaceCloser.CloseTarget] = []
+        var targetSpaces: [Space] = []
         for (_, spacesOnDisplay) in byDisplay {
             guard spacesOnDisplay.count > 1 else { continue }
-            for space in spacesOnDisplay.dropFirst() {
-                if let target = closeTarget(for: space) {
-                    targets.append(target)
-                }
-            }
+            targetSpaces += spacesOnDisplay.dropFirst()
         }
 
+        let targets = targetSpaces.compactMap { closeTarget(for: $0) }
         guard !targets.isEmpty else { return }
 
         let alert = NSAlert()
@@ -738,7 +787,14 @@ class StatusBarController: NSObject {
         alert.alertStyle = .warning
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        SpaceCloser.closeSpaces(targets: targets) { [weak self] _ in
+        let current = currentSpaces.first { $0.isCurrentSpace && !$0.isFullScreen }
+        let focusTarget = current.flatMap { current in
+            targetSpaces.contains(where: { $0.spaceID == current.spaceID })
+                ? self.focusTarget(afterClosing: targetSpaces, preferredClosedSpace: current)
+                : nil
+        }
+
+        SpaceCloser.closeSpaces(targets: targets, focusTarget: focusTarget) { [weak self] _ in
             self?.refreshAfterClose()
         }
     }
