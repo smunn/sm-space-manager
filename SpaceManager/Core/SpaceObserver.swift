@@ -25,6 +25,10 @@ class SpaceObserver {
     private let nameStore = SpaceNameStore.shared
     private let workerQueue = DispatchQueue(label: "com.smunn.SpaceManager.SpaceObserver")
 
+    // Display UUIDs in the order CGSCopyManagedDisplaySpaces returns them.
+    // This matches Mission Control's AX tree group ordering (group 1, group 2, etc.).
+    private(set) var missionControlDisplayOrder: [String] = []
+
     private var _needsPositionRevalidation = true
     private var _lastKnownDisplayIDs: Set<String> = []
     private var _topologyChangeGracePeriod: Int = 0
@@ -68,11 +72,15 @@ class SpaceObserver {
     private func performSpaceInformationUpdate(needsRevalidation: Bool) {
         guard var displays = fetchDisplaySpaces() else { return }
 
+        let rawDisplayOrder = displays.compactMap { $0["Display Identifier"] as? String }
+
         displays.sort { a, b in
             let c1 = DisplayGeometryUtilities.getDisplayCenter(display: a)
             let c2 = DisplayGeometryUtilities.getDisplayCenter(display: b)
             return c1.x < c2.x
         }
+
+        missionControlDisplayOrder = rawDisplayOrder
 
         let connectedDisplayIDs: Set<String> = Set(
             displays.compactMap { $0["Display Identifier"] as? String }

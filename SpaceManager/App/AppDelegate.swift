@@ -245,7 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         currentSpaces = enriched
-        statusBarController.updateSpaces(enriched)
+        statusBarController.updateSpaces(enriched, missionControlDisplayOrder: spaceObserver.missionControlDisplayOrder)
         processPendingCommandURLs()
     }
 }

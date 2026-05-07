@@ -14,6 +14,7 @@ class StatusBarController: NSObject {
 
     private var currentSpaces: [Space] = []
     private var physicalDisplayOrder: [String] = []
+    private var missionControlDisplayOrder: [String] = []
 
     override init() {
         super.init()
@@ -29,7 +30,7 @@ class StatusBarController: NSObject {
         statusItem.menu = statusMenu
     }
 
-    func updateSpaces(_ spaces: [Space]) {
+    func updateSpaces(_ spaces: [Space], missionControlDisplayOrder mcOrder: [String] = []) {
         currentSpaces = spaces
 
         var ids: [String] = []
@@ -40,6 +41,7 @@ class StatusBarController: NSObject {
             }
         }
         physicalDisplayOrder = ids
+        missionControlDisplayOrder = mcOrder.isEmpty ? ids : mcOrder
 
         spaceSwitcher.reloadShortcuts()
         updateMenuBarTitle(spaces)
@@ -512,7 +514,7 @@ class StatusBarController: NSObject {
     // MARK: - Display Helpers
 
     private func displayGroupIndex(for displayID: String) -> Int {
-        (physicalDisplayOrder.firstIndex(of: displayID) ?? 0) + 1
+        (missionControlDisplayOrder.firstIndex(of: displayID) ?? 0) + 1
     }
 
     private func activeDisplayGroupIndex() -> Int {

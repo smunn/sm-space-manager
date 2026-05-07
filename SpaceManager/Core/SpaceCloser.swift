@@ -106,7 +106,11 @@ class SpaceCloser {
         lines.append("  tell process \"Dock\"")
         lines.append("    tell group \"Mission Control\"")
 
-        for group in grouped.keys.sorted() {
+        let sortedGroups = grouped.keys.sorted()
+        for (i, group) in sortedGroups.enumerated() {
+            if i > 0 {
+                lines.append("      delay 0.5")
+            }
             let desktopNumbers = grouped[group]!.map(\.desktopNumber).sorted(by: >)
             lines.append("      tell group \(group)")
             lines.append("        tell group \"Spaces Bar\"")
