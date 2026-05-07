@@ -128,12 +128,12 @@ class StatusBarController: NSObject {
         renameItem.target = self
         statusMenu.addItem(renameItem)
 
-        let hasOverride: Bool = {
-            guard let current = spaces.first(where: { $0.isCurrentSpace }) else { return false }
+        let currentNameSource: NameSource? = {
+            guard let current = spaces.first(where: { $0.isCurrentSpace }) else { return nil }
             let stored = SpaceNameStore.shared.loadAll()
-            return stored[current.spaceID]?.isUserOverride ?? false
+            return stored[current.spaceID]?.nameSource
         }()
-        if hasOverride {
+        if currentNameSource == .manual || currentNameSource == .workspace {
             let clearItem = NSMenuItem(
                 title: "Clear Name Override",
                 action: #selector(clearCurrentSpaceName),
@@ -156,8 +156,8 @@ class StatusBarController: NSObject {
 
         statusMenu.addItem(NSMenuItem.separator())
 
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
+        let settingsItem = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        settingsItem.submenu = buildSettingsSubmenu()
         statusMenu.addItem(settingsItem)
 
         statusMenu.addItem(NSMenuItem.separator())
@@ -200,10 +200,20 @@ class StatusBarController: NSObject {
         ]
         attrTitle.append(NSAttributedString(string: space.spaceName, attributes: nameAttrs))
 
+        if space.hasDriftedName {
+            let driftAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.menuFont(ofSize: 11),
+                .foregroundColor: NSColor.tertiaryLabelColor
+            ]
+            attrTitle.append(NSAttributedString(string: "  \u{00B7}", attributes: driftAttrs))
+        }
+
         if !space.windows.isEmpty {
             let appNames = uniqueAppNames(space.windows)
             let subtitle = appNames.joined(separator: ", ")
-            item.toolTip = subtitle
+            item.toolTip = space.hasDriftedName
+                ? "Windows have changed since workspace was created"
+                : subtitle
 
             let subtitleAttrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.menuFont(ofSize: 11),
@@ -291,6 +301,24 @@ class StatusBarController: NSObject {
         header.isEnabled = false
         header.attributedTitle = NSAttributedString(string: title, attributes: attrs)
         menu.addItem(header)
+    }
+
+    // MARK: - Settings Submenu
+
+    private func buildSettingsSubmenu() -> NSMenu {
+        let submenu = NSMenu()
+
+        let prefsItem = NSMenuItem(title: "Preferences...", action: #selector(openSettings), keyEquivalent: ",")
+        prefsItem.target = self
+        submenu.addItem(prefsItem)
+
+        submenu.addItem(NSMenuItem.separator())
+
+        let devTermItem = NSMenuItem(title: "Open Dev Terminal", action: #selector(openDevTerminal), keyEquivalent: "")
+        devTermItem.target = self
+        submenu.addItem(devTermItem)
+
+        return submenu
     }
 
     // MARK: - Transfer Submenu
@@ -814,6 +842,23 @@ class StatusBarController: NSObject {
             displayGroupIndex: groupIndex
         ) { [weak self] _ in
             self?.refreshAfterClose()
+        }
+    }
+
+    @objc private func openDevTerminal() {
+        let script = """
+        tell application "Terminal"
+            activate
+            do script "cd ~/Sites/mac-space-manager"
+        end tell
+        """
+        DispatchQueue.global(qos: .userInitiated).async {
+            let appleScript = NSAppleScript(source: script)
+            var error: NSDictionary?
+            appleScript?.executeAndReturnError(&error)
+            if let error {
+                NSLog("openDevTerminal AppleScript failed: \(error)")
+            }
         }
     }
 

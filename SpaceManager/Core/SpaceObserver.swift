@@ -168,7 +168,7 @@ class SpaceObserver {
                     spaceNum: spaceNumber,
                     spaceName: resolvedName,
                     spaceByDesktopID: spaceByDesktopID,
-                    isUserOverride: savedInfo?.isUserOverride ?? false)
+                    nameSource: savedInfo?.nameSource ?? .auto)
                 nameInfo.displayUUID = displayID
                 nameInfo.positionOnDisplay = positionOnThisDisplay
 

@@ -7,6 +7,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
+    @AppStorage("autoUpdateWorkspaceNames") private var autoUpdateWorkspaceNames = true
     @State private var permissionStates: [AppPermission: Bool] = [:]
 
     var body: some View {
@@ -46,6 +47,13 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+
+                    Divider()
+
+                    Toggle(
+                        "Auto-update workspace names",
+                        isOn: $autoUpdateWorkspaceNames
+                    )
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

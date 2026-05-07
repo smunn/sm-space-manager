@@ -17,6 +17,7 @@ struct Space: Equatable, Identifiable {
     var isCurrentSpace: Bool
     var isFullScreen: Bool
     var windows: [SpaceWindow]
+    var hasDriftedName: Bool = false
 
     static let maxSwitchableDesktop = 16
 

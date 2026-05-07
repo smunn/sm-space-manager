@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingCommandURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UserDefaults.standard.register(defaults: ["autoUpdateWorkspaceNames": true])
+
         windowDetector = WindowDetector()
         spaceNamer = SpaceNamer()
         statusBarController = StatusBarController()
@@ -81,13 +83,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wallpaperOK = SpaceTransfer.transferWallpaper(
             fromDisplay: sourceDisplayID, toDisplay: targetDisplayID)
 
-        // Transfer user-overridden name to the target display's current space
+        // Transfer named space to the target display's current space
         let stored = SpaceNameStore.shared.loadAll()
-        if stored[sourceSpaceID]?.isUserOverride == true {
+        if let sourceInfo = stored[sourceSpaceID], sourceInfo.nameSource != .auto {
             if let targetSpace = currentSpaces.first(where: {
                 $0.displayID == targetDisplayID && $0.isCurrentSpace
             }) {
-                setSpaceName(spaceID: targetSpace.spaceID, name: stored[sourceSpaceID]!.spaceName)
+                setSpaceName(spaceID: targetSpace.spaceID, name: sourceInfo.spaceName, source: sourceInfo.nameSource)
                 setSpaceName(spaceID: sourceSpaceID, name: "")
             }
         }
@@ -135,10 +137,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSLog("SpaceManager API: rename-current missing name query parameter")
                 return
             }
-            renameCurrentSpace(to: name)
+            let sticky = queryValue("sticky", in: url)?.lowercased() != "false"
+            renameCurrentSpace(to: name, source: sticky ? .manual : .workspace)
 
         case ("clear-current-name", _), ("space", "/current/clear-name"):
-            renameCurrentSpace(to: "")
+            renameCurrentSpace(to: "", source: .auto)
 
         case ("refresh", _):
             spaceObserver.updateSpaceInformation()
@@ -158,36 +161,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .value
     }
 
-    private func renameCurrentSpace(to name: String) {
+    private func renameCurrentSpace(to name: String, source: NameSource = .manual) {
         guard let current = currentSpaces.first(where: { $0.isCurrentSpace }) else {
             NSLog("SpaceManager API: no current space available")
             return
         }
 
-        setSpaceName(spaceID: current.spaceID, name: name)
+        setSpaceName(spaceID: current.spaceID, name: name, source: source)
     }
 
-    private func setSpaceName(spaceID: String, name rawName: String) {
+    private func setSpaceName(spaceID: String, name rawName: String, source: NameSource = .manual) {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let nameStore = SpaceNameStore.shared
 
         if name.isEmpty {
             nameStore.update { names in
                 if let info = names[spaceID] {
-                    names[spaceID] = info.withName("", isOverride: false)
+                    names[spaceID] = info.withName("", nameSource: .auto)
                 }
             }
         } else {
             nameStore.update { names in
                 if let info = names[spaceID] {
-                    names[spaceID] = info.withName(name, isOverride: true)
+                    names[spaceID] = info.withName(name, nameSource: source)
                 } else {
                     let space = currentSpaces.first(where: { $0.spaceID == spaceID })
                     let newInfo = SpaceNameInfo(
                         spaceNum: space?.spaceNumber ?? 0,
                         spaceName: name,
                         spaceByDesktopID: space?.spaceByDesktopID ?? "",
-                        isUserOverride: true)
+                        nameSource: source)
                     names[spaceID] = newInfo
                 }
             }
@@ -213,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func enrichAndDisplay(_ spaces: [Space]) {
         var enriched = spaces
         let storedNames = SpaceNameStore.shared.loadAll()
+        let autoUpdate = UserDefaults.standard.bool(forKey: "autoUpdateWorkspaceNames")
 
         for i in enriched.indices {
             let spaceID = enriched[i].spaceID
@@ -220,11 +224,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             enriched[i].windows = windows
 
             let storedInfo = storedNames[spaceID]
-            if let storedInfo, storedInfo.isUserOverride, !storedInfo.spaceName.isEmpty {
+            let autoName = windows.isEmpty
+                ? nil
+                : spaceNamer.generateName(for: windows, spaceNumber: enriched[i].spaceNumber)
+
+            if let storedInfo, storedInfo.nameSource == .manual, !storedInfo.spaceName.isEmpty {
                 enriched[i].spaceName = storedInfo.spaceName
-            } else if !windows.isEmpty {
-                enriched[i].spaceName = spaceNamer.generateName(
-                    for: windows, spaceNumber: enriched[i].spaceNumber)
+            } else if let storedInfo, storedInfo.nameSource == .workspace, !storedInfo.spaceName.isEmpty {
+                if autoUpdate {
+                    enriched[i].spaceName = autoName ?? storedInfo.spaceName
+                } else {
+                    enriched[i].spaceName = storedInfo.spaceName
+                    if let autoName, autoName != storedInfo.spaceName {
+                        enriched[i].hasDriftedName = true
+                    }
+                }
+            } else if let autoName {
+                enriched[i].spaceName = autoName
             }
         }
 
