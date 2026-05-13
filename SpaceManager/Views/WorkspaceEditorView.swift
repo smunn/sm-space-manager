@@ -10,6 +10,7 @@ struct WorkspaceEditorView: View {
     @State private var searchText = ""
     @State private var showAddSheet = false
     @State private var deleteTarget: ManagedWorkspace?
+    @State private var selectedKey: String?
 
     private var activeWorkspaces: [ManagedWorkspace] {
         filtered.filter { !$0.isArchived }
@@ -28,62 +29,81 @@ struct WorkspaceEditorView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                TextField("Filter", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 200)
-
-                Spacer()
-
-                Button(action: { showAddSheet = true }) {
-                    Image(systemName: "plus")
+        NavigationSplitView {
+            VStack(spacing: 0) {
+                HStack {
+                    TextField("Filter", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                    Button(action: { showAddSheet = true }) {
+                        Image(systemName: "plus")
+                    }
+                    .help("Add workspace")
                 }
-                .help("Add workspace")
+                .padding(8)
+
+                if store.workspaces.isEmpty {
+                    Spacer()
+                    Text("No workspaces found")
+                        .foregroundStyle(.secondary)
+                    Text(WorkspaceStore.configPath)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                    Spacer()
+                } else {
+                    List(selection: $selectedKey) {
+                        if !activeWorkspaces.isEmpty {
+                            Section("Active (\(activeWorkspaces.count))") {
+                                ForEach(activeWorkspaces) { workspace in
+                                    WorkspaceRow(workspace: workspace)
+                                        .tag(workspace.key)
+                                        .contextMenu {
+                                            Button("Archive") {
+                                                store.setArchived(workspace, archived: true)
+                                            }
+                                            Divider()
+                                            Button("Delete", role: .destructive) {
+                                                deleteTarget = workspace
+                                            }
+                                        }
+                                }
+                            }
+                        }
+                        if !archivedWorkspaces.isEmpty {
+                            Section("Archived (\(archivedWorkspaces.count))") {
+                                ForEach(archivedWorkspaces) { workspace in
+                                    WorkspaceRow(workspace: workspace)
+                                        .tag(workspace.key)
+                                        .contextMenu {
+                                            Button("Unarchive") {
+                                                store.setArchived(workspace, archived: false)
+                                            }
+                                            Divider()
+                                            Button("Delete", role: .destructive) {
+                                                deleteTarget = workspace
+                                            }
+                                        }
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.sidebar)
+                }
             }
-            .padding()
-
-            if store.workspaces.isEmpty {
-                Spacer()
-                Text("No workspaces found")
-                    .foregroundStyle(.secondary)
-                Text(WorkspaceStore.configPath)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-                Spacer()
+            .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
+        } detail: {
+            if let key = selectedKey,
+               store.workspaces.contains(where: { $0.key == key }) {
+                WorkspaceDetailView(store: store, workspaceKey: key)
+                    .id(key)
             } else {
-                List {
-                    if !activeWorkspaces.isEmpty {
-                        Section("Active (\(activeWorkspaces.count))") {
-                            ForEach(activeWorkspaces) { workspace in
-                                WorkspaceRow(workspace: workspace, onArchive: {
-                                    store.setArchived(workspace, archived: true)
-                                }, onDelete: {
-                                    deleteTarget = workspace
-                                })
-                            }
-                        }
-                    }
-
-                    if !archivedWorkspaces.isEmpty {
-                        Section("Archived (\(archivedWorkspaces.count))") {
-                            ForEach(archivedWorkspaces) { workspace in
-                                WorkspaceRow(workspace: workspace, onArchive: {
-                                    store.setArchived(workspace, archived: false)
-                                }, onDelete: {
-                                    deleteTarget = workspace
-                                })
-                            }
-                        }
-                    }
-                }
-                .listStyle(.inset(alternatesRowBackgrounds: true))
+                Text("Select a workspace")
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(width: 520, height: 480)
         .sheet(isPresented: $showAddSheet) {
-            AddWorkspaceSheet(store: store)
+            AddWorkspaceSheet(store: store, selectedKey: $selectedKey)
         }
         .alert("Delete Workspace?", isPresented: Binding(
             get: { deleteTarget != nil },
@@ -91,13 +111,12 @@ struct WorkspaceEditorView: View {
         )) {
             Button("Delete", role: .destructive) {
                 if let target = deleteTarget {
+                    if selectedKey == target.key { selectedKey = nil }
                     store.remove(target)
                 }
                 deleteTarget = nil
             }
-            Button("Cancel", role: .cancel) {
-                deleteTarget = nil
-            }
+            Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
             if let target = deleteTarget {
                 Text("Remove \"\(target.displayName)\" from workspaces? This cannot be undone.")
@@ -107,51 +126,43 @@ struct WorkspaceEditorView: View {
     }
 }
 
+// MARK: - Workspace Row
+
 private struct WorkspaceRow: View {
     let workspace: ManagedWorkspace
-    let onArchive: () -> Void
-    let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(workspace.displayName)
-                        .fontWeight(.medium)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(workspace.displayName)
+                    .fontWeight(.medium)
 
-                    if workspace.hasPrompt {
-                        Text("prompt")
-                            .font(.caption2)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(.quaternary)
-                            .clipShape(RoundedRectangle(cornerRadius: 3))
-                    }
+                if workspace.hasPrompt {
+                    Text("prompt")
+                        .font(.caption2)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(.quaternary)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
 
-                if let path = workspace.projectPath {
-                    Text(path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                if workspace.apps != nil {
+                    Text("apps")
+                        .font(.caption2)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(.quaternary)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
             }
 
-            Spacer()
-
-            Button(action: onArchive) {
-                Image(systemName: workspace.isArchived ? "arrow.uturn.backward" : "archivebox")
+            if let path = workspace.projectPath {
+                Text(path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            .buttonStyle(.borderless)
-            .help(workspace.isArchived ? "Unarchive" : "Archive")
-
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.red)
-            .help("Delete")
         }
         .padding(.vertical, 2)
         .opacity(workspace.isArchived ? 0.6 : 1.0)
@@ -159,8 +170,11 @@ private struct WorkspaceRow: View {
     }
 }
 
+// MARK: - Add Workspace Sheet
+
 private struct AddWorkspaceSheet: View {
     @ObservedObject var store: WorkspaceStore
+    @Binding var selectedKey: String?
     @Environment(\.dismiss) private var dismiss
 
     @State private var displayName = ""
@@ -240,11 +254,13 @@ private struct AddWorkspaceSheet: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Add") {
+                    let newKey = effectiveKey
                     store.add(
-                        key: effectiveKey,
+                        key: newKey,
                         displayName: displayName.trimmingCharacters(in: .whitespaces),
                         projectPath: projectPath.isEmpty ? nil : projectPath
                     )
+                    selectedKey = newKey
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

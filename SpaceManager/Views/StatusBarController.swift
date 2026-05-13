@@ -886,13 +886,13 @@ class StatusBarController: NSObject {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 560),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false)
         window.title = "Manage Workspaces"
         window.contentView = NSHostingView(rootView: WorkspaceEditorView())
-        window.contentMinSize = NSSize(width: 420, height: 300)
+        window.contentMinSize = NSSize(width: 600, height: 400)
         window.center()
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
