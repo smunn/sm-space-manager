@@ -11,6 +11,7 @@ class StatusBarController: NSObject {
     private var statusMenu: NSMenu!
     private let spaceSwitcher = SpaceSwitcher()
     private var settingsWindow: NSWindow?
+    private var workspaceEditorWindow: NSWindow?
 
     private var currentSpaces: [Space] = []
     private var physicalDisplayOrder: [String] = []
@@ -313,6 +314,10 @@ class StatusBarController: NSObject {
         let prefsItem = NSMenuItem(title: "Preferences...", action: #selector(openSettings), keyEquivalent: ",")
         prefsItem.target = self
         submenu.addItem(prefsItem)
+
+        let workspacesItem = NSMenuItem(title: "Manage Workspaces...", action: #selector(openWorkspaceEditor), keyEquivalent: "")
+        workspacesItem.target = self
+        submenu.addItem(workspacesItem)
 
         submenu.addItem(NSMenuItem.separator())
 
@@ -870,6 +875,28 @@ class StatusBarController: NSObject {
 
     func showSettings() {
         openSettings()
+    }
+
+    @objc private func openWorkspaceEditor() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let existing = workspaceEditorWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false)
+        window.title = "Manage Workspaces"
+        window.contentView = NSHostingView(rootView: WorkspaceEditorView())
+        window.contentMinSize = NSSize(width: 420, height: 300)
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        workspaceEditorWindow = window
     }
 
     @objc private func openSettings() {

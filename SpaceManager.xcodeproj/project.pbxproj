@@ -26,7 +26,9 @@
 		79B306578A1BD5062718CBD7 /* View+DebugLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4FF5B5E97D65212F53962BB /* View+DebugLabel.swift */; };
 		7A093486395B7B264E561AD7 /* WorkspaceLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47932FA0B64A4E108FC71631 /* WorkspaceLauncher.swift */; };
 		7A667BD4DA36417C5AA1E583 /* SpaceTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC80DA235AD47C992270A3B /* SpaceTransfer.swift */; };
+		9EE943500BD3217010C1EA84 /* WorkspaceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E618C1148A91CB03E3A7C8 /* WorkspaceEditorView.swift */; };
 		A6B0E111C975490EE6BD25B0 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B554C5F7DF1B6C58AF4301F4 /* AppDelegate.swift */; };
+		A7657D799BF3E7F194521E91 /* WorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8BEBF77D87DFC507D17A3E3 /* WorkspaceStore.swift */; };
 		ABE439E098D8935AC52C38F2 /* WindowDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FCD10B9F25963D2BECC467D /* WindowDetector.swift */; };
 		B6389B5374D0DC9DD7D5D685 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0F9A7165BF4C3B5090A6F3 /* Extensions.swift */; };
 		CFEE86A9515F441B273A001F /* SpaceNamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CCEF522DC0B4871C7115D84 /* SpaceNamer.swift */; };
@@ -56,9 +58,11 @@
 		703E83622E4EE8A035214A5A /* Space.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Space.swift; sourceTree = "<group>"; };
 		733D1DA7778E004B4E5C77B4 /* ProcessHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessHelper.swift; sourceTree = "<group>"; };
 		85C16AFA9AAD2CC7CF7741A6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		97E618C1148A91CB03E3A7C8 /* WorkspaceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceEditorView.swift; sourceTree = "<group>"; };
 		993C119C5A1753F1A427B3D8 /* SpaceSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceSwitcher.swift; sourceTree = "<group>"; };
 		A0B53C4CE84788E6E384F699 /* SpaceNameInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceNameInfo.swift; sourceTree = "<group>"; };
 		B554C5F7DF1B6C58AF4301F4 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B8BEBF77D87DFC507D17A3E3 /* WorkspaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceStore.swift; sourceTree = "<group>"; };
 		BA0F9A7165BF4C3B5090A6F3 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		CB7E606BD09EE855032540E6 /* SpaceManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpaceManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC1761DA8F106DAD6C9F477D /* SpaceObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceObserver.swift; sourceTree = "<group>"; };
@@ -104,6 +108,7 @@
 				E075B3BEBED8138ABF9F40DC /* WorkspaceAutomation.swift */,
 				5E24B9AD41807749EE20B419 /* WorkspaceConfig.swift */,
 				47932FA0B64A4E108FC71631 /* WorkspaceLauncher.swift */,
+				B8BEBF77D87DFC507D17A3E3 /* WorkspaceStore.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -152,6 +157,7 @@
 			children = (
 				85C16AFA9AAD2CC7CF7741A6 /* SettingsView.swift */,
 				5C9412D33F0D096D25CDA4C3 /* StatusBarController.swift */,
+				97E618C1148A91CB03E3A7C8 /* WorkspaceEditorView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -264,7 +270,9 @@
 				ABE439E098D8935AC52C38F2 /* WindowDetector.swift in Sources */,
 				62DAC63236FEB617879B8ACB /* WorkspaceAutomation.swift in Sources */,
 				35CEEC8DA0FF59D622D38FD4 /* WorkspaceConfig.swift in Sources */,
+				9EE943500BD3217010C1EA84 /* WorkspaceEditorView.swift in Sources */,
 				7A093486395B7B264E561AD7 /* WorkspaceLauncher.swift in Sources */,
+				A7657D799BF3E7F194521E91 /* WorkspaceStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

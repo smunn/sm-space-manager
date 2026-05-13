@@ -26,7 +26,9 @@ enum WorkspaceConfig {
         guard let workspaces = loadWorkspaceDictionary() else { return [] }
 
         return workspaces.compactMap { key, value in
-            guard value["prompt"] == nil else { return nil }
+            guard value["prompt"] == nil,
+                  value["archived"] as? Bool != true
+            else { return nil }
             let displayName = value["displayName"] as? String ?? key
             return WorkspaceEntry(key: key, displayName: displayName)
         }
