@@ -63,6 +63,21 @@ enum WorkspaceConfig {
         .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 
+    static func workspaceKey(forRepoName repoName: String) -> String? {
+        guard let workspaces = loadWorkspaceDictionary() else { return nil }
+        let lowerName = repoName.lowercased()
+
+        for (key, value) in workspaces {
+            if value["archived"] as? Bool == true { continue }
+            guard let projectPath = value["projectPath"] as? String else { continue }
+            let expanded = NSString(string: projectPath).expandingTildeInPath
+            if URL(fileURLWithPath: expanded).lastPathComponent.lowercased() == lowerName {
+                return key
+            }
+        }
+        return nil
+    }
+
     private static func loadWorkspaceDictionary() -> [String: [String: Any]]? {
         let url = URL(fileURLWithPath: configPath)
         guard let data = try? Data(contentsOf: url),

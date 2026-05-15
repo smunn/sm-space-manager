@@ -33,10 +33,10 @@ enum WorkspaceLauncher {
         }
     }
 
-    static func launchSite(name: String, path sitePath: String) {
+    static func launchSite(name: String, path sitePath: String, issueNumber: Int? = nil) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let configPath = try writeTemporarySiteConfig(name: name, path: sitePath)
+                let configPath = try writeTemporarySiteConfig(name: name, path: sitePath, issueNumber: issueNumber)
                 launchTemporarySiteConfig(configPath: configPath, name: name)
             } catch {
                 NSLog("WorkspaceLauncher: failed to prepare site '%@': %@", name, error.localizedDescription)
@@ -44,8 +44,9 @@ enum WorkspaceLauncher {
         }
     }
 
-    private static func writeTemporarySiteConfig(name: String, path sitePath: String) throws -> String {
+    private static func writeTemporarySiteConfig(name: String, path sitePath: String, issueNumber: Int? = nil) throws -> String {
         let terminalWorkingDirectory = shellQuoted(sitePath)
+        let terminalCommand = issueNumber.map { "todo \($0)" } ?? "todo"
         let config: [String: Any] = [
             "version": 1,
             "workspaces": [
@@ -69,7 +70,7 @@ enum WorkspaceLauncher {
                             "type": "terminal",
                             "position": "bottom-right",
                             "workingDirectory": terminalWorkingDirectory,
-                            "command": "todo"
+                            "command": terminalCommand
                         ]
                     ]
                 ]

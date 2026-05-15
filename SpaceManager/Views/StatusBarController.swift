@@ -17,6 +17,9 @@ class StatusBarController: NSObject {
     private var physicalDisplayOrder: [String] = []
     private var missionControlDisplayOrder: [String] = []
 
+    private let issueFetcher = GitHubIssueFetcher.shared
+    private var issuesMenu: NSMenu?
+
     override init() {
         super.init()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -29,6 +32,7 @@ class StatusBarController: NSObject {
         }
 
         statusItem.menu = statusMenu
+        issueFetcher.startPeriodicRefresh()
     }
 
     func updateSpaces(_ spaces: [Space], missionControlDisplayOrder mcOrder: [String] = []) {
@@ -91,6 +95,13 @@ class StatusBarController: NSObject {
         let closeItem = NSMenuItem(title: "Close", action: nil, keyEquivalent: "")
         closeItem.submenu = buildCloseSubmenu(spaces)
         statusMenu.addItem(closeItem)
+
+        let issuesItem = NSMenuItem(title: "Issues", action: nil, keyEquivalent: "")
+        let issMenu = NSMenu()
+        issMenu.delegate = self
+        issuesItem.submenu = issMenu
+        issuesMenu = issMenu
+        statusMenu.addItem(issuesItem)
 
         statusMenu.addItem(NSMenuItem.separator())
 
@@ -514,6 +525,229 @@ class StatusBarController: NSObject {
 
         item.attributedTitle = attrTitle
         return item
+    }
+
+    // MARK: - Issues Submenu
+
+    private func populateIssuesMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let issues = issueFetcher.issues
+
+        if issues.isEmpty {
+            let message: String
+            if issueFetcher.isFetching {
+                message = "Loading..."
+            } else if let error = issueFetcher.lastError {
+                message = error
+            } else if issueFetcher.hasFetched {
+                message = "No open issues"
+            } else {
+                message = "Loading..."
+            }
+            let item = NSMenuItem(title: message, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        } else {
+            let recentItem = NSMenuItem(title: "Recent", action: nil, keyEquivalent: "")
+            let recentMenu = NSMenu()
+            buildIssuesList(recentMenu, issues: issues, sortByRecent: true)
+            recentItem.submenu = recentMenu
+            menu.addItem(recentItem)
+
+            let azItem = NSMenuItem(title: "A to Z", action: nil, keyEquivalent: "")
+            let azMenu = NSMenu()
+            buildIssuesList(azMenu, issues: issues, sortByRecent: false)
+            azItem.submenu = azMenu
+            menu.addItem(azItem)
+        }
+
+        menu.addItem(NSMenuItem.separator())
+
+        let refreshItem = NSMenuItem(
+            title: "Refresh Issues",
+            action: #selector(refreshIssues),
+            keyEquivalent: "")
+        refreshItem.target = self
+        menu.addItem(refreshItem)
+    }
+
+    private func buildIssuesList(_ menu: NSMenu, issues: [GitHubIssue], sortByRecent: Bool) {
+        let grouped = Dictionary(grouping: issues, by: { $0.repoFullName })
+
+        let sortedRepos: [String]
+        if sortByRecent {
+            sortedRepos = grouped.keys.sorted { a, b in
+                let aMax = grouped[a]!.map(\.updatedAt).max() ?? ""
+                let bMax = grouped[b]!.map(\.updatedAt).max() ?? ""
+                return aMax > bMax
+            }
+        } else {
+            sortedRepos = grouped.keys.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        }
+
+        for (index, repoFullName) in sortedRepos.enumerated() {
+            if index > 0 { menu.addItem(NSMenuItem.separator()) }
+
+            let repoName = repoFullName.components(separatedBy: "/").last ?? repoFullName
+            addSectionHeader(repoName, to: menu)
+
+            guard let repoIssues = grouped[repoFullName] else { continue }
+            let sorted = sortByRecent
+                ? repoIssues.sorted { $0.updatedAt > $1.updatedAt }
+                : repoIssues
+
+            for issue in sorted {
+                addIssueMenuItem(issue, to: menu)
+            }
+        }
+    }
+
+    private func addIssueMenuItem(_ issue: GitHubIssue, to menu: NSMenu) {
+        let info: [String: Any] = [
+            "repoName": issue.repoName,
+            "repoFullName": issue.repoFullName,
+            "number": issue.number,
+            "title": issue.title,
+            "url": issue.url
+        ]
+
+        let item = NSMenuItem(
+            title: "#\(issue.number) \(issue.title)",
+            action: #selector(openIssueProject(_:)),
+            keyEquivalent: "")
+        item.target = self
+        item.representedObject = info
+
+        let attrTitle = NSMutableAttributedString()
+        let numAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.tertiaryLabelColor
+        ]
+        attrTitle.append(NSAttributedString(string: "#\(issue.number) ", attributes: numAttrs))
+
+        let titleAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.menuFont(ofSize: 13),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let truncatedTitle = issue.title.count > 60
+            ? String(issue.title.prefix(57)) + "..."
+            : issue.title
+        attrTitle.append(NSAttributedString(string: truncatedTitle, attributes: titleAttrs))
+
+        item.attributedTitle = attrTitle
+        menu.addItem(item)
+
+        let altItem = NSMenuItem(
+            title: "#\(issue.number) \(issue.title)",
+            action: #selector(openIssueInBrowser(_:)),
+            keyEquivalent: "")
+        altItem.target = self
+        altItem.representedObject = info
+        altItem.isAlternate = true
+        altItem.keyEquivalentModifierMask = .option
+
+        let altAttrTitle = NSMutableAttributedString(attributedString: attrTitle)
+        let arrowAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.menuFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        altAttrTitle.append(NSAttributedString(string: "  \u{2197}", attributes: arrowAttrs))
+        altItem.attributedTitle = altAttrTitle
+        menu.addItem(altItem)
+    }
+
+    @objc private func openIssueProject(_ sender: NSMenuItem) {
+        guard let info = sender.representedObject as? [String: Any],
+              let repoName = info["repoName"] as? String,
+              let repoFullName = info["repoFullName"] as? String,
+              let number = info["number"] as? Int
+        else { return }
+
+        // Check for configured workspace
+        if let workspaceKey = WorkspaceConfig.workspaceKey(forRepoName: repoName) {
+            let groupIndex = activeDisplayGroupIndex()
+            let issueNum = number
+            SpaceCloser.addSpaceAndSwitch(
+                toDesktopNumber: nextDesktopNumberOnActiveDisplay(),
+                displayGroupIndex: groupIndex
+            ) { [weak self] _ in
+                WorkspaceLauncher.launch(workspaceKey)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                    self?.sendIssueToIdleTerminal(issueNumber: issueNum)
+                }
+            }
+            return
+        }
+
+        // Find local project by name or git remote
+        if let localPath = GitHubIssueFetcher.localProjectPath(for: repoName, repoFullName: repoFullName) {
+            let groupIndex = activeDisplayGroupIndex()
+            SpaceCloser.addSpaceAndSwitch(
+                toDesktopNumber: nextDesktopNumberOnActiveDisplay(),
+                displayGroupIndex: groupIndex
+            ) { [weak self] success in
+                guard success else {
+                    self?.refreshAfterClose()
+                    return
+                }
+                WorkspaceLauncher.launchSite(name: repoName, path: localPath, issueNumber: number)
+                self?.refreshAfterClose()
+            }
+            return
+        }
+
+        NSSound.beep()
+    }
+
+    @objc private func openIssueInBrowser(_ sender: NSMenuItem) {
+        guard let info = sender.representedObject as? [String: Any],
+              let url = info["url"] as? String,
+              let issueURL = URL(string: url)
+        else { return }
+        NSWorkspace.shared.open(issueURL)
+    }
+
+    @objc private func refreshIssues() {
+        issueFetcher.fetch()
+    }
+
+    // Finds an idle Terminal tab (not busy) among the frontmost windows
+    // and sends `todo <number>` to it. Retries up to 3 times with 2s gaps
+    // to handle workspace startup timing.
+    private func sendIssueToIdleTerminal(issueNumber: Int, retryCount: Int = 0) {
+        guard retryCount < 3 else { return }
+
+        let script = """
+        tell application "Terminal"
+            if (count of windows) is 0 then return "none"
+            set windowLimit to count of windows
+            if windowLimit > 4 then set windowLimit to 4
+            repeat with i from 1 to windowLimit
+                set w to window i
+                repeat with t in tabs of w
+                    if busy of t is false then
+                        do script "todo \(issueNumber)" in t
+                        return "sent"
+                    end if
+                end repeat
+            end repeat
+            return "none"
+        end tell
+        """
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let appleScript = NSAppleScript(source: script)
+            var error: NSDictionary?
+            let result = appleScript?.executeAndReturnError(&error)
+            let sent = result?.stringValue == "sent"
+
+            if !sent {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    self?.sendIssueToIdleTerminal(issueNumber: issueNumber, retryCount: retryCount + 1)
+                }
+            }
+        }
     }
 
     // MARK: - Display Helpers
@@ -947,4 +1181,15 @@ class StatusBarController: NSObject {
 }
 
 extension StatusBarController: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        if menu === statusMenu {
+            issueFetcher.refreshIfNeeded()
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === issuesMenu {
+            populateIssuesMenu(menu)
+        }
+    }
 }
