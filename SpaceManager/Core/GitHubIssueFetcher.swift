@@ -102,7 +102,7 @@ class GitHubIssueFetcher {
     // MARK: - gh CLI
 
     private static func runSearch() -> ([GitHubIssue]?, String?) {
-        let command = "gh search issues --author=@me --state=open --json repository,title,number,url,labels,updatedAt --sort updated -L 30"
+        let command = "gh search issues --author=@me --state=open --json repository,title,number,url,labels,updatedAt --sort updated -L 1000"
 
         let process = Process()
         let outPipe = Pipe()
